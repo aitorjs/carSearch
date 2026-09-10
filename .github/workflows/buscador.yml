@@ -1,0 +1,99 @@
+# buscador.yml
+# ---------------------------------------------------------------
+# Este archivo va dentro de tu repositorio en: .github/workflows/buscador.yml
+#
+# Hace que GitHub ejecute buscador_furgonetas.js cada 3 horas de forma
+# GRATUITA (GitHub da minutos gratis de sobra para esto en repos
+# públicos y también en privados de cuentas personales), y te avisa
+# por Telegram cuando encuentra un anuncio nuevo.
+#
+# PASOS PARA CONFIGURARLO (una sola vez):
+#
+# 1. Crea una cuenta en https://github.com si no tienes una, y crea un
+#    repositorio nuevo (puede ser privado), por ejemplo "buscador-furgo".
+#
+# 2. Sube estos 3 archivos al repositorio, respetando esta estructura
+#    de carpetas:
+#
+#       buscador-furgo/
+#       ├── buscador_furgonetas.js
+#       ├── package.json
+#       └── .github/
+#           └── workflows/
+#               └── buscador.yml      <- este archivo, con ese nombre exacto
+#
+#    (Puedes hacerlo desde la web de GitHub con "Add file" > "Upload
+#    files", sin necesidad de usar la terminal ni git.)
+#
+# 3. Crea un bot de Telegram:
+#    a) Abre Telegram y busca el usuario "@BotFather" (el bot oficial
+#       para crear bots).
+#    b) Envíale el comando /newbot y sigue las instrucciones (te pedirá
+#       un nombre y un nombre de usuario para tu bot).
+#    c) Te dará un TOKEN parecido a esto:
+#           123456789:AAHk3jX9-ejemplo-de-token-no-real
+#       Guárdalo, es el TELEGRAM_BOT_TOKEN.
+#    d) Abre una conversación con tu bot recién creado (búscalo por el
+#       nombre de usuario que le pusiste) y envíale cualquier mensaje,
+#       por ejemplo "hola" (esto es necesario para que el bot pueda
+#       escribirte a ti).
+#    e) Averigua tu "chat_id": abre en el navegador esta URL, cambiando
+#       TU_TOKEN por el token real:
+#           https://api.telegram.org/botTU_TOKEN/getUpdates
+#       Y busca en el resultado un número dentro de "chat":{"id": ...}.
+#       Ese número es tu TELEGRAM_CHAT_ID.
+#
+# 4. En tu repositorio de GitHub, ve a Settings > Secrets and variables
+#    > Actions > New repository secret, y crea estos 2 secretos:
+#
+#       TELEGRAM_BOT_TOKEN   -> el token del paso 3c
+#       TELEGRAM_CHAT_ID     -> el número del paso 3e
+#
+# 5. Ve a la pestaña "Actions" de tu repositorio y actívalo si te lo
+#    pide. A partir de ahí se ejecutará solo cada 3 horas, y también
+#    puedes lanzarlo a mano con el botón "Run workflow".
+#
+# NOTA: si el repositorio está 60 días sin ninguna actividad, GitHub
+# pausa automáticamente los cron programados (por ahorro de recursos).
+# Basta con entrar en la pestaña Actions y darle a "Run workflow" a
+# mano una vez para reactivarlo.
+
+name: Buscar furgonetas en coches.net
+
+on:
+  schedule:
+    - cron: "0 */3 * * *" # cada 3 horas
+  workflow_dispatch: {} # permite lanzarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write # necesario para poder guardar el historial de vistos
+
+jobs:
+  buscar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Ejecutar el buscador
+        id: buscar
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: node buscador_furgonetas.js
+
+      - name: Guardar el historial de anuncios vistos
+        run: |
+          git config user.name "buscador-furgonetas-bot"
+          git config user.email "actions@github.com"
+          git add vistos.json
+          git diff --cached --quiet || git commit -m "Actualizar historial de anuncios vistos"
+          git push

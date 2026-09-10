@@ -1,0 +1,13 @@
+{
+  "name": "buscador-furgonetas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Busca en coches.net furgonetas tipo Nemo/Berlingo/Kangoo en Gipuzkoa y avisa por Telegram de las nuevas",
+  "main": "buscador_furgonetas.js",
+  "scripts": {
+    "buscar": "node buscador_furgonetas.js"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0"
+  }
+}
