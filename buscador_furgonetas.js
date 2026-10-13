@@ -54,16 +54,24 @@ const cheerio = require("cheerio");
 // ======================= CONFIGURACIÓN =======================
 
 // Palabras clave que buscamos en el título del anuncio (en minúsculas)
-const PALABRAS_CLAVE = ["nemo", "berlingo", "kangoo", "bipper", "fiorino", "partner"];
+// Se buscan como palabra completa (así "sw" no salta con "swift" ni "caravan"
+// con "caravana"). Furgonetas pequeñas + rancheras/familiares/estate.
+const PALABRAS_CLAVE = [
+  // furgonetas pequeñas
+  "nemo", "berlingo", "kangoo", "bipper", "fiorino", "partner", "combo",
+  // rancheras / familiares
+  "grandtour", "grand tour", "combi", "caravan", "touring", "variant", "sw",
+  "avant", "break", "estate", "sportwagon", "tourer", "ranchera", "familiar",
+];
 
 // Presupuesto máximo en euros
-const PRECIO_MAXIMO = 3000;
+const PRECIO_MAXIMO = 4000;
 
 // Provincia (tal y como aparece en la URL de coches.net)
 const PROVINCIA = "guipuzcoa";
 
 // Cuántas páginas de resultados revisar como máximo en cada tramo de precio
-const MAX_PAGINAS = 3;
+const MAX_PAGINAS = 20;
 
 // Archivo donde se guarda qué anuncios ya hemos visto (para no repetir avisos).
 // En GitHub Actions este archivo vive dentro del propio repositorio, para
@@ -72,7 +80,8 @@ const ARCHIVO_HISTORIAL = path.join(__dirname, "vistos.json");
 
 // Tramos de precio de coches.net que vamos a consultar (la web organiza
 // los resultados en escalones de precio, así que consultamos un par)
-const TRAMOS_PRECIO = [2000, 3000, 5000];
+// (las páginas son acumulativas: 4000_euros ya incluye todo lo de menos precio)
+const TRAMOS_PRECIO = [4000];
 
 const HEADERS = {
   "User-Agent":
@@ -86,6 +95,17 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 // ===============================================================
+
+const REGEX_PALABRAS = new RegExp(
+  "(?<![a-z0-9áéíóúñ])(" +
+    PALABRAS_CLAVE.map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") +
+    ")(?![a-z0-9áéíóúñ])",
+  "i"
+);
+
+function coincidePalabraClave(texto) {
+  return REGEX_PALABRAS.test(texto);
+}
 
 function cargarHistorial() {
   try {
@@ -207,10 +227,7 @@ async function buscarFurgonetas() {
       for (const { url: urlAnuncio, texto } of anuncios) {
         const textoMin = texto.toLowerCase();
 
-        const coincidePalabraClave = PALABRAS_CLAVE.some((palabra) =>
-          textoMin.includes(palabra)
-        );
-        if (!coincidePalabraClave) continue;
+        if (!coincidePalabraClave(textoMin)) continue;
 
         if (!precioDentroDePresupuesto(texto, PRECIO_MAXIMO)) continue;
 
@@ -224,6 +241,22 @@ async function buscarFurgonetas() {
 
   guardarHistorial(vistos);
   return nuevosEncontrados;
+}
+
+// Telegram admite máximo 4096 caracteres por mensaje: agrupamos en trozos.
+function trocear(bloques, limite = 3500) {
+  const trozos = [];
+  let actual = "";
+  for (const b of bloques) {
+    if (actual && (actual + "\n\n" + b).length > limite) {
+      trozos.push(actual);
+      actual = b;
+    } else {
+      actual = actual ? actual + "\n\n" + b : b;
+    }
+  }
+  if (actual) trozos.push(actual);
+  return trozos;
 }
 
 async function main() {
@@ -249,9 +282,11 @@ async function main() {
   }
 
   try {
-    const cabecera = `¡${nuevos.length} furgoneta(s) nueva(s) en coches.net!\n\n`;
-    await enviarTelegram(cabecera + lineas.join("\n\n"));
-    console.log("Mensaje de Telegram enviado.");
+    const cabecera = `¡${nuevos.length} coche(s) nuevo(s) en coches.net!`;
+    for (const trozo of trocear([cabecera, ...lineas])) {
+      await enviarTelegram(trozo);
+    }
+    console.log("Mensaje(s) de Telegram enviado(s).");
   } catch (error) {
     console.error("[error] no se pudo enviar el mensaje de Telegram:", error.message);
   }
@@ -261,4 +296,8 @@ async function main() {
   }
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = { extraerAnuncios, coincidePalabraClave, precioDentroDePresupuesto, trocear };
